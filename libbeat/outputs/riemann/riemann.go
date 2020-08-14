@@ -21,9 +21,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"github.com/Jeffail/gabs"
 	"os"
 	"runtime"
 	"time"
+	jsonEncoding "encoding/json"
 
 	"github.com/elastic/beats/v7/libbeat/beat"
 	"github.com/elastic/beats/v7/libbeat/common"
@@ -32,6 +34,7 @@ import (
 	"github.com/elastic/beats/v7/libbeat/outputs/codec"
 	"github.com/elastic/beats/v7/libbeat/outputs/codec/json"
 	"github.com/elastic/beats/v7/libbeat/publisher"
+	_"github.com/Jeffail/gabs"
 )
 
 
@@ -44,6 +47,21 @@ type riemann struct {
 	index    string
 }
 
+type OsData struct {
+	Family string
+	Kernel string
+}
+
+type RiemannData struct {
+	Timestamp string
+	Hostname string
+	Ip string
+	Os OsData
+	Message string
+	Username string
+	Action string
+}
+
 type consoleEvent struct {
 	Timestamp time.Time `json:"@timestamp" struct:"@timestamp"`
 
@@ -52,7 +70,6 @@ type consoleEvent struct {
 }
 
 func init() {
-	fmt.Println("AAAAA")
 	outputs.RegisterType("riemann", makeRiemann)
 }
 
@@ -129,44 +146,29 @@ func (c *riemann) Publish(_ context.Context, batch publisher.Batch) error {
 var nl = []byte("\n")
 
 func (c *riemann) publishEvent(event *publisher.Event) bool {
-	serializedEvent, err := c.codec.Encode(c.index, &event.Content)
-	if err != nil {
-		if !event.Guaranteed() {
-			return false
-		}
+	x_times := &event.Content.Fields
+	x_fields := x_times.Clone().String()
+	//fmt.Println(x_fields,"\n")
 
-		c.log.Errorf("Unable to encode event: %+v", err)
-		c.log.Debugf("Failed event: %v", event)
-		return false
+	x_jsonParsed, _ := gabs.ParseJSON(jsonEncoding.RawMessage(fmt.Sprintf("%v",x_fields)))
+	x_os_data := OsData{
+		Family: x_jsonParsed.Path("host.os.family").String(),
+		Kernel: x_jsonParsed.Path("host.os.kernel").String(),
 	}
+	x_riemann_data := RiemannData{
+		Timestamp: event.Content.Timestamp.String(),
+		Hostname: x_jsonParsed.Path("host.hostname").String(),
+		Os: x_os_data,
+		Message: x_jsonParsed.Path("message").String(),
+		Username: x_jsonParsed.Path("winlog.user.name").String(),
+		Action: x_jsonParsed.Path("event.action").String(),
 
-	if err := c.writeBuffer(serializedEvent); err != nil {
-		c.observer.WriteError(err)
-		c.log.Errorf("Unable to publish events to riemann: %+v", err)
-		return false
+
 	}
+	fmt.Println(x_riemann_data)
+	/*fmt.Println(x_jsonParsed.Path("host.hostname").String())*/
 
-	if err := c.writeBuffer(nl); err != nil {
-		c.observer.WriteError(err)
-		c.log.Errorf("Error when appending newline to event: %+v", err)
-		return false
-	}
-
-	c.observer.WriteBytes(len(serializedEvent) + 1)
 	return true
-}
-
-func (c *riemann) writeBuffer(buf []byte) error {
-	written := 0
-	for written < len(buf) {
-		n, err := c.writer.Write(buf[written:])
-		if err != nil {
-			return err
-		}
-
-		written += n
-	}
-	return nil
 }
 
 func (c *riemann) String() string {
