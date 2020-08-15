@@ -134,7 +134,7 @@ output.elasticsearch:
 
 # ------------------------------- Riemann Output -------------------------------
 output.riemann:
-  hosts: ["localhost:5555"]
+  hosts: ["192.168.1.86:5555"]
 
 # ================================= Processors =================================
 processors:

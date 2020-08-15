@@ -35,6 +35,8 @@ import (
 	"github.com/elastic/beats/v7/libbeat/outputs/codec/json"
 	"github.com/elastic/beats/v7/libbeat/publisher"
 	_"github.com/Jeffail/gabs"
+	riemanngo "github.com/riemann/riemann-go-client"
+	"log"
 )
 
 
@@ -165,10 +167,30 @@ func (c *riemann) publishEvent(event *publisher.Event) bool {
 
 
 	}
-	fmt.Println(x_riemann_data)
+	x_riemann_data.sendItToRiemann()
 	/*fmt.Println(x_jsonParsed.Path("host.hostname").String())*/
 
 	return true
+}
+
+func (r *RiemannData) sendItToRiemann(){
+	c := riemanngo.NewTCPClient("192.168.1.86:5555", 5*time.Second)
+	err := c.Connect()
+	if err != nil {
+		panic(err)
+	}
+	_, err = riemanngo.SendEvent(c, &riemanngo.Event{
+		Service:     "Windows",
+		Host:        r.Hostname,
+		State:       "ok",
+		Metric:      100,
+		Description: r.Message,
+		Tags:        []string{r.Username},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
 }
 
 func (c *riemann) String() string {
