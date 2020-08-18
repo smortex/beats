@@ -190,7 +190,8 @@ func (r *RiemannData) sendItToRiemann(){
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer c.Close()
+	c.Close()
+	time.Sleep(1 * time.Second)
 }
 
 func (c *riemann) String() string {
