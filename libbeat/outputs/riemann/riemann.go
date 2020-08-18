@@ -47,6 +47,7 @@ type riemann struct {
 	writer   *bufio.Writer
 	codec    codec.Codec
 	index    string
+	hosts []string
 }
 
 type OsData struct {
@@ -99,8 +100,13 @@ func makeRiemann(
 		})
 	}
 
+	hosts, err := outputs.ReadHostList(cfg)
+	if err != nil {
+		return outputs.Fail(err)
+	}
+
 	index := beat.Beat
-	c, err := newRiemann(index, observer, enc)
+	c, err := newRiemann(index, observer, enc, hosts)
 	if err != nil {
 		return outputs.Fail(fmt.Errorf("riemann output initialization failed with: %v", err))
 	}
@@ -116,8 +122,8 @@ func makeRiemann(
 	return outputs.Success(config.BatchSize, 0, c)
 }
 
-func newRiemann(index string, observer outputs.Observer, codec codec.Codec) (*riemann, error) {
-	c := &riemann{log: logp.NewLogger("riemann"), out: os.Stdout, codec: codec, observer: observer, index: index}
+func newRiemann(index string, observer outputs.Observer, codec codec.Codec, hosts []string) (*riemann, error) {
+	c := &riemann{log: logp.NewLogger("riemann"), out: os.Stdout, codec: codec, observer: observer, index: index, hosts: hosts}
 	c.writer = bufio.NewWriterSize(c.out, 8*1024)
 	return c, nil
 }
@@ -167,31 +173,33 @@ func (c *riemann) publishEvent(event *publisher.Event) bool {
 
 
 	}
-	x_riemann_data.sendItToRiemann()
+	x_riemann_data.sendItToRiemann(c)
 	/*fmt.Println(x_jsonParsed.Path("host.hostname").String())*/
 
 	return true
 }
 
-func (r *RiemannData) sendItToRiemann(){
-	c := riemanngo.NewTCPClient("192.168.1.86:5555", 5*time.Second)
-	err := c.Connect()
-	if err != nil {
-		panic(err)
+func (r *RiemannData) sendItToRiemann(c *riemann){
+	for _, host := range c.hosts {
+		conn := riemanngo.NewTCPClient(host, 5*time.Second)
+		err := conn.Connect()
+		if err != nil {
+			panic(err)
+		}
+		_, err = riemanngo.SendEvent(conn, &riemanngo.Event{
+			Service:     "Windows",
+			Host:        r.Hostname,
+			State:       "ok",
+			Metric:      100,
+			Description: r.Message,
+			Tags:        []string{r.Username},
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		conn.Close()
+		time.Sleep(1 * time.Second)
 	}
-	_, err = riemanngo.SendEvent(c, &riemanngo.Event{
-		Service:     "Windows",
-		Host:        r.Hostname,
-		State:       "ok",
-		Metric:      100,
-		Description: r.Message,
-		Tags:        []string{r.Username},
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	c.Close()
-	time.Sleep(1 * time.Second)
 }
 
 func (c *riemann) String() string {
