@@ -20,12 +20,18 @@ package riemann
 import (
 	"bufio"
 	"context"
+	jsonEncoding "encoding/json"
 	"fmt"
-	"github.com/Jeffail/gabs"
 	"os"
 	"runtime"
 	"time"
-	jsonEncoding "encoding/json"
+
+	"github.com/Jeffail/gabs"
+
+	"log"
+
+	_ "github.com/Jeffail/gabs"
+	riemanngo "github.com/riemann/riemann-go-client"
 
 	"github.com/elastic/beats/v7/libbeat/beat"
 	"github.com/elastic/beats/v7/libbeat/common"
@@ -34,11 +40,7 @@ import (
 	"github.com/elastic/beats/v7/libbeat/outputs/codec"
 	"github.com/elastic/beats/v7/libbeat/outputs/codec/json"
 	"github.com/elastic/beats/v7/libbeat/publisher"
-	_"github.com/Jeffail/gabs"
-	riemanngo "github.com/riemann/riemann-go-client"
-	"log"
 )
-
 
 type riemann struct {
 	log      *logp.Logger
@@ -47,7 +49,7 @@ type riemann struct {
 	writer   *bufio.Writer
 	codec    codec.Codec
 	index    string
-	hosts []string
+	hosts    []string
 }
 
 type OsData struct {
@@ -57,12 +59,12 @@ type OsData struct {
 
 type RiemannData struct {
 	Timestamp string
-	Hostname string
-	Ip string
-	Os OsData
-	Message string
-	Username string
-	Action string
+	Hostname  string
+	Ip        string
+	Os        OsData
+	Message   string
+	Username  string
+	Action    string
 }
 
 type consoleEvent struct {
@@ -158,20 +160,18 @@ func (c *riemann) publishEvent(event *publisher.Event) bool {
 	x_fields := x_times.Clone().String()
 	//fmt.Println(x_fields,"\n")
 
-	x_jsonParsed, _ := gabs.ParseJSON(jsonEncoding.RawMessage(fmt.Sprintf("%v",x_fields)))
+	x_jsonParsed, _ := gabs.ParseJSON(jsonEncoding.RawMessage(fmt.Sprintf("%v", x_fields)))
 	x_os_data := OsData{
 		Family: x_jsonParsed.Path("host.os.family").String(),
 		Kernel: x_jsonParsed.Path("host.os.kernel").String(),
 	}
 	x_riemann_data := RiemannData{
 		Timestamp: event.Content.Timestamp.String(),
-		Hostname: x_jsonParsed.Path("host.hostname").String(),
-		Os: x_os_data,
-		Message: x_jsonParsed.Path("message").String(),
-		Username: x_jsonParsed.Path("winlog.user.name").String(),
-		Action: x_jsonParsed.Path("event.action").String(),
-
-
+		Hostname:  x_jsonParsed.Path("host.hostname").String(),
+		Os:        x_os_data,
+		Message:   x_jsonParsed.Path("message").String(),
+		Username:  x_jsonParsed.Path("winlog.user.name").String(),
+		Action:    x_jsonParsed.Path("event.action").String(),
 	}
 	x_riemann_data.sendItToRiemann(c)
 	/*fmt.Println(x_jsonParsed.Path("host.hostname").String())*/
@@ -179,7 +179,7 @@ func (c *riemann) publishEvent(event *publisher.Event) bool {
 	return true
 }
 
-func (r *RiemannData) sendItToRiemann(c *riemann){
+func (r *RiemannData) sendItToRiemann(c *riemann) {
 	for _, host := range c.hosts {
 		conn := riemanngo.NewTCPClient(host, 5*time.Second)
 		err := conn.Connect()
