@@ -132,6 +132,10 @@ output.elasticsearch:
   # Client Certificate Key
   #ssl.key: "/etc/pki/client/cert.key"
 
+# ------------------------------- Riemann Output -------------------------------
+output.riemann:
+  hosts: ["localhost:5555"]
+
 # ================================= Processors =================================
 processors:
   - add_host_metadata:
